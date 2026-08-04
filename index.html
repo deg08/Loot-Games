@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Фрукты 10</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="game-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-fruit">🍊</span><div><small>СОБЕРИ СУММУ</small><h1>Фрукты 10</h1></div></div>
+      <div class="stats"><div><small>СЧЁТ</small><strong id="score">0</strong></div><div><small>РЕКОРД</small><strong id="best">0</strong></div></div>
+    </header>
+
+    <section class="play-area">
+      <div class="goal-card">
+        <span>Твоя цель</span>
+        <strong>10</strong>
+        <p>Выбирай фрукты, чтобы получить ровно десять</p>
+      </div>
+
+      <div class="board-wrap">
+        <div class="combo" id="combo"></div>
+        <div class="board" id="board" aria-label="Игровое поле"></div>
+      </div>
+
+      <div class="controls">
+        <div class="sum-box"><span>СУММА</span><strong id="sum">0</strong><em>/ 10</em></div>
+        <button class="clear-btn" id="clear" type="button" aria-label="Сбросить выбор">Сбросить</button>
+        <button class="collect-btn" id="collect" type="button" disabled>Собрать!</button>
+      </div>
+      <p class="hint" id="hint">Нажимай на любые фрукты</p>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status"></div>
+  <script src="game.js"></script>
+</body>
+</html>
