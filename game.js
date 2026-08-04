@@ -34,13 +34,20 @@ function render(initial=false) {
   cells.forEach((item,index) => {
     const button = document.createElement('button');
     const isBomb = item.id === bombId;
-    button.className = `fruit ${item.type}${selected.has(item.id) ? ' selected' : ''}${isBomb ? ' bomb' : ''}`;
+    button.className = `fruit ${item.type}${selected.has(item.id) ? ' selected' : ''}${isBomb ? ' bomb' : ''}${initial ? ' intro' : ''}${item.fallRows ? ' falling' : ''}`;
     button.innerHTML = `<span class="fruit-number">${item.value}</span>${isBomb ? `<span class="fuse-label">${fuse}</span>` : ''}`;
     button.dataset.id = item.id;
     button.setAttribute('aria-label', `${isBomb ? `Фрукт с бомбой, осталось ходов ${fuse},` : ''} ${item.type === 'apple' ? 'Яблоко' : 'Апельсин'}, число ${item.value}`);
     if (initial) button.style.animationDelay = `${(index % COLS) * 35 + Math.floor(index/COLS) * 22}ms`;
+    if (item.fallRows) {
+      button.style.setProperty('--fall-pct', `${item.fallRows * -100}%`);
+      button.style.setProperty('--fall-gap', `${item.fallRows * 7}px`);
+      button.style.animationDelay = `${item.fallDelay || 0}ms`;
+    }
     button.addEventListener('click', () => toggle(item.id));
     boardEl.append(button);
+    delete item.fallRows;
+    delete item.fallDelay;
   });
   updateUI();
 }
@@ -96,7 +103,7 @@ async function collect() {
 
   if (bombId && fuse <= 0) { endGame(); return; }
   if (!bombId && successfulMoves > 0 && successfulMoves % 3 === 0) plantBomb();
-  render(true); locked = false;
+  render(); locked = false;
 }
 
 function plantBomb() {
@@ -111,9 +118,22 @@ function collapseAndRefill() {
   for (let col=0; col<COLS; col++) {
     const survivors = [];
     for (let row=ROWS-1; row>=0; row--) {
-      const item = cells[row*COLS+col]; if (!selected.has(item.id)) survivors.push(item);
+      const item = cells[row*COLS+col];
+      if (!selected.has(item.id)) survivors.push({item, oldRow:row});
     }
-    for (let row=ROWS-1, i=0; row>=0; row--,i++) next[row*COLS+col] = survivors[i] || fruit();
+    const missing = ROWS - survivors.length;
+    for (let row=ROWS-1, i=0; row>=0; row--,i++) {
+      if (survivors[i]) {
+        const survivor = survivors[i];
+        survivor.item.fallRows = row - survivor.oldRow;
+        next[row*COLS+col] = survivor.item;
+      } else {
+        const newcomer = fruit();
+        newcomer.fallRows = missing;
+        newcomer.fallDelay = (missing - row - 1) * 28;
+        next[row*COLS+col] = newcomer;
+      }
+    }
   }
   cells = next;
 }
