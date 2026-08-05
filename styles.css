@@ -478,6 +478,13 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
   .hint { min-height: 14px; }
 }
 
+@media (max-width: 350px) {
+  .controls { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .sum-box span { display: none; }
+  .danger-meter span { font-size: 0; }
+  .danger-meter span::after { content: "💣"; font-size: 14px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
