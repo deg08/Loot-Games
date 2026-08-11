@@ -149,10 +149,10 @@ function toggle(id) {
     const lastIndex = cells.findIndex(item => item.id === chain[chain.length - 1]);
     const nextIndex = cells.findIndex(item => item.id === id);
     if (!areNeighbors(lastIndex,nextIndex)) {
-      const button = boardEl.querySelector(`[data-id="${id}"]`);
-      button?.classList.add('invalid');
-      setTimeout(() => button?.classList.remove('invalid'),280);
-      hintEl.textContent = 'Этот фрукт не рядом с концом цепочки';
+      chain = [id];
+      selected = new Set(chain);
+      syncSelectionUI();
+      updateUI();
       return;
     }
   }
@@ -223,12 +223,14 @@ function extendPointerChain(id) {
 
 function finishPointerChain(event) {
   if (event.pointerId !== activePointerId) return;
+  const resetMiss = dragging && !locked && total() !== target;
   if (dragging) ignoreClickUntil = performance.now() + 450;
   boardEl.classList.remove('dragging');
   if (boardEl.hasPointerCapture?.(event.pointerId)) boardEl.releasePointerCapture(event.pointerId);
   activePointerId = null;
   dragStartId = null;
   dragging = false;
+  if (resetMiss) clearSelection();
 }
 
 function scheduleCollectionIfReady() {
