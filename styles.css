@@ -202,7 +202,7 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: var(--gap);
-  aspect-ratio: 6 / 7;
+  aspect-ratio: 6 / 8;
 }
 
 .fruit {
@@ -553,7 +553,7 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
   .play-area { gap: 6px; }
   .goal-card { min-height: 46px; padding-block: 5px; }
   .mission-copy p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .board-wrap { width: min(100%, calc((100svh - 213px) * 6 / 7)); align-self: center; }
+  .board-wrap { width: min(100%, calc((100svh - 213px) * 6 / 8)); align-self: center; }
   .controls { min-height: 48px; }
   .hint { min-height: 14px; }
 }

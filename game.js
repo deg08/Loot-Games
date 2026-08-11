@@ -1,14 +1,13 @@
-const ROWS = 7;
+const ROWS = 8;
 const COLS = 6;
-const TARGET = 10;
-const MAX_CHAIN_LENGTH = 6;
+const MAX_CHAIN_LENGTH = 8;
 
 const LEVELS = [
-  { title:'Набери 360 очков', type:'score', goal:360, moves:12 },
-  { title:'Собери 10 яблок', type:'apples', goal:10, moves:14, bombEvery:4, fuse:4 },
-  { title:'Набери 800 очков', type:'score', goal:800, moves:14, bombEvery:3, fuse:3 },
-  { title:'Обезвредь 2 бомбы', type:'bombs', goal:2, moves:14, bombEvery:3, fuse:3, startBomb:true },
-  { title:'Набери 1200 очков', type:'score', goal:1200, moves:15, bombEvery:3, fuse:2 }
+  { title:'Набери 600 очков', type:'score', goal:600, moves:10, target:10, maxValue:4 },
+  { title:'Собери 12 яблок', type:'apples', goal:12, moves:12, target:12, maxValue:5, bombEvery:4, fuse:4 },
+  { title:'Набери 1200 очков', type:'score', goal:1200, moves:12, target:14, maxValue:5, bombEvery:3, fuse:3 },
+  { title:'Обезвредь 3 бомбы', type:'bombs', goal:3, moves:14, target:16, maxValue:5, bombEvery:3, fuse:3, startBomb:true },
+  { title:'Набери 1800 очков', type:'score', goal:1800, moves:14, target:18, maxValue:6, bombEvery:3, fuse:2 }
 ];
 
 const boardEl = document.querySelector('#board');
@@ -25,6 +24,8 @@ const levelEl = document.querySelector('#level');
 const movesEl = document.querySelector('#moves');
 const missionEl = document.querySelector('#mission');
 const progressEl = document.querySelector('#progress');
+const targetEl = document.querySelector('#target');
+const sumTargetEl = document.querySelector('#sumTarget');
 const gameOverEl = document.querySelector('#gameOver');
 const gameOverIconEl = document.querySelector('#gameOverIcon');
 const gameOverTitleEl = document.querySelector('#gameOverTitle');
@@ -48,10 +49,11 @@ let locked = false;
 let autoCollectTimer = null;
 let bombId = null;
 let fuse = 4;
+let target = 10;
 let best = Number(localStorage.getItem('fruit10-best') || 0);
 bestEl.textContent = best;
 
-const randomValue = () => Math.floor(Math.random() * 9) + 1;
+const randomValue = () => Math.max(1,Math.ceil(Math.pow(Math.random(),1.35) * currentLevel().maxValue));
 const fruit = () => ({
   value: randomValue(),
   type: Math.random() < .34 ? 'apple' : 'orange',
@@ -61,8 +63,8 @@ const fruit = () => ({
 function currentLevel() {
   if (levelIndex < LEVELS.length) return LEVELS[levelIndex];
   const round = levelIndex - LEVELS.length + 1;
-  const goal = 1300 + round * 250;
-  return { title:`Набери ${goal} очков`, type:'score', goal, moves:15, bombEvery:2, fuse:2, startBomb:true };
+  const goal = 1900 + round * 300;
+  return { title:`Набери ${goal} очков`, type:'score', goal, moves:14, target:18, maxValue:6, bombEvery:2, fuse:2, startBomb:true };
 }
 
 function start() {
@@ -75,6 +77,7 @@ function start() {
 function beginLevel() {
   clearTimeout(autoCollectTimer);
   const level = currentLevel();
+  target = level.target;
   cells = Array.from({length:ROWS * COLS}, fruit);
   selected = new Set();
   chain = [];
@@ -155,9 +158,9 @@ function toggle(id) {
 }
 
 function scheduleCollectionIfReady() {
-  if (total() !== TARGET) return;
+  if (total() !== target) return;
   locked = true;
-  hintEl.textContent = 'Десятка! Собираем…';
+  hintEl.textContent = `Есть ${target}! Собираем…`;
   autoCollectTimer = setTimeout(collect,280);
 }
 
@@ -180,20 +183,22 @@ function updateUI() {
   const level = currentLevel();
   const sum = total();
   sumEl.textContent = sum;
-  sumEl.style.color = sum === TARGET ? '#69d15b' : sum > TARGET ? '#ff6689' : '';
+  sumEl.style.color = sum === target ? '#69d15b' : sum > target ? '#ff6689' : '';
   scoreEl.textContent = score;
   levelEl.textContent = levelIndex + 1;
   movesEl.textContent = movesLeft;
   movesEl.parentElement.classList.toggle('urgent',movesLeft <= 3);
   missionEl.textContent = level.title;
   progressEl.textContent = progressLabel();
+  targetEl.textContent = target;
+  sumTargetEl.textContent = target;
   dangerMeterEl.hidden = !bombId;
   fuseEl.textContent = fuse;
   dangerMeterEl.classList.toggle('urgent',fuse <= 2);
 
-  if (sum > TARGET) hintEl.textContent = 'Перебор — вернись на шаг назад';
-  else if (!chain.length) hintEl.textContent = bombId ? 'Начни цепочку и доберись до бомбы' : 'Соединяй соседние фрукты в сумму 10';
-  else if (sum < TARGET) hintEl.textContent = `Цепочка: ${sum}. Продолжай по соседним клеткам`;
+  if (sum > target) hintEl.textContent = 'Перебор — вернись на шаг назад';
+  else if (!chain.length) hintEl.textContent = bombId ? 'Начни цепочку и доберись до бомбы' : `Соединяй соседние фрукты в сумму ${target}`;
+  else if (sum < target) hintEl.textContent = `Цепочка: ${sum} из ${target}. Продолжай по соседним клеткам`;
 }
 
 function progressValue() {
@@ -218,7 +223,7 @@ function clearSelection() {
 }
 
 async function collect() {
-  if (total() !== TARGET) { locked = false; return; }
+  if (total() !== target) { locked = false; return; }
   const level = currentLevel();
   const defused = Boolean(bombId && selected.has(bombId));
   const selectedItems = cells.filter(item => selected.has(item.id));
@@ -338,8 +343,8 @@ function neighborIndexes(index) {
 function hasChainFrom(startIndex) {
   const visited = new Set([startIndex]);
   function search(index,sum,depth) {
-    if (sum === TARGET && depth >= 2) return true;
-    if (sum >= TARGET || depth >= MAX_CHAIN_LENGTH) return false;
+    if (sum === target && depth >= 3) return true;
+    if (sum >= target || depth >= MAX_CHAIN_LENGTH) return false;
     for (const next of neighborIndexes(index)) {
       if (visited.has(next)) continue;
       visited.add(next);
@@ -364,8 +369,7 @@ function ensurePlayable() {
       return;
     }
   }
-  cells[0].value = 4;
-  cells[1].value = 6;
+  forcePlayableChain();
 }
 
 function ensureBombPlayable() {
@@ -373,7 +377,38 @@ function ensureBombPlayable() {
   if (bombIndex < 0 || hasChainFrom(bombIndex)) return;
   const neighbors = neighborIndexes(bombIndex);
   const rescue = neighbors[Math.floor(Math.random() * neighbors.length)];
-  cells[rescue].value = TARGET - cells[bombIndex].value;
+  const needed = target - cells[bombIndex].value;
+  if (needed <= currentLevel().maxValue) {
+    cells[rescue].value = needed;
+    return;
+  }
+  forcePlayableChain(bombIndex);
+}
+
+function forcePlayableChain(startIndex=0) {
+  const maxValue = currentLevel().maxValue;
+  const count = Math.ceil(target / maxValue);
+  const path = startIndex === 0 ? Array.from({length:count},(_,i) => i) : buildPathFrom(startIndex,count);
+  let remaining = target;
+  path.forEach((index,position) => {
+    const slotsLeft = path.length - position - 1;
+    const value = Math.min(maxValue,remaining - slotsLeft);
+    cells[index].value = value;
+    remaining -= value;
+  });
+}
+
+function buildPathFrom(startIndex,length) {
+  const path = [startIndex];
+  const used = new Set(path);
+  while (path.length < length) {
+    const options = neighborIndexes(path[path.length - 1]).filter(index => !used.has(index));
+    const next = options[0];
+    if (next === undefined) break;
+    path.push(next);
+    used.add(next);
+  }
+  return path;
 }
 
 function shuffle(items) {

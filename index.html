@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Фрукты 10</title>
+  <title>Фрукты 10+</title>
   <meta name="theme-color" content="#100b27" />
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
 </head>
 <body>
   <main class="game-shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-fruit">🍊</span><div><small>СОБЕРИ СУММУ</small><h1>Фрукты 10</h1></div></div>
+      <div class="brand"><span class="brand-fruit">🍊</span><div><small>СОБЕРИ СУММУ</small><h1>Фрукты 10+</h1></div></div>
       <div class="stats"><div><small>СЧЁТ</small><strong id="score">0</strong></div><div><small>РЕКОРД</small><strong id="best">0</strong></div></div>
     </header>
 
@@ -19,7 +19,7 @@
         <div class="level-chip"><small>УРОВЕНЬ</small><strong id="level">1</strong></div>
         <div class="mission-copy"><span id="mission">Набери 300 очков</span><p id="progress">0 / 300</p></div>
         <div class="moves-box"><small>ХОДЫ</small><strong id="moves">12</strong></div>
-        <div class="target-token"><small>СУММА</small><strong>10</strong></div>
+        <div class="target-token"><small>СУММА</small><strong id="target">10</strong></div>
       </div>
 
       <div class="board-wrap">
@@ -28,7 +28,7 @@
       </div>
 
       <div class="controls">
-        <div class="sum-box"><span>СУММА</span><strong id="sum">0</strong><em>/ 10</em></div>
+        <div class="sum-box"><span>СУММА</span><strong id="sum">0</strong><em>/ <b id="sumTarget">10</b></em></div>
         <button class="clear-btn" id="clear" type="button" aria-label="Сбросить выбор">Сбросить</button>
         <div class="danger-meter" id="dangerMeter" hidden><span>💣 ФИТИЛЬ</span><strong id="fuse">4</strong><em>хода</em></div>
       </div>
@@ -55,6 +55,6 @@
       <button id="nextLevel" type="button">Следующий уровень</button>
     </div>
   </div>
-  <script src="game.js?v=6"></script>
+  <script src="game.js?v=7"></script>
 </body>
 </html>
