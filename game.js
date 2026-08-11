@@ -50,6 +50,10 @@ let autoCollectTimer = null;
 let bombId = null;
 let fuse = 4;
 let target = 10;
+let activePointerId = null;
+let dragStartId = null;
+let dragging = false;
+let ignoreClickUntil = 0;
 let best = Number(localStorage.getItem('fruit10-best') || 0);
 bestEl.textContent = best;
 
@@ -112,7 +116,10 @@ function render(initial=false) {
       button.style.setProperty('--fall-gap', `${item.fallRows * 7}px`);
       button.style.animationDelay = `${item.fallDelay || 0}ms`;
     }
-    button.addEventListener('click', () => toggle(item.id));
+    button.addEventListener('click', () => {
+      if (performance.now() < ignoreClickUntil) return;
+      toggle(item.id);
+    });
     boardEl.append(button);
     delete item.fallRows;
     delete item.fallDelay;
@@ -155,6 +162,73 @@ function toggle(id) {
   syncSelectionUI();
   updateUI();
   scheduleCollectionIfReady();
+}
+
+function startPointerChain(event) {
+  if (locked || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+  const fruitButton = event.target.closest('.fruit');
+  if (!fruitButton) return;
+  activePointerId = event.pointerId;
+  dragStartId = fruitButton.dataset.id;
+  dragging = false;
+  boardEl.setPointerCapture?.(event.pointerId);
+}
+
+function movePointerChain(event) {
+  if (event.pointerId !== activePointerId || locked || !dragStartId) return;
+  const fruitButton = document.elementFromPoint(event.clientX,event.clientY)?.closest('.fruit');
+  const id = fruitButton?.dataset.id;
+  if (!id || id === dragStartId && !dragging) return;
+
+  if (!dragging) {
+    const startIndex = cells.findIndex(item => item.id === dragStartId);
+    const nextIndex = cells.findIndex(item => item.id === id);
+    if (!areNeighbors(startIndex,nextIndex)) return;
+    clearTimeout(autoCollectTimer);
+    chain = [dragStartId];
+    selected = new Set(chain);
+    dragging = true;
+    boardEl.classList.add('dragging');
+    syncSelectionUI();
+    updateUI();
+  }
+
+  extendPointerChain(id);
+  event.preventDefault();
+}
+
+function extendPointerChain(id) {
+  const lastId = chain[chain.length - 1];
+  if (!lastId || id === lastId) return;
+
+  if (selected.has(id)) {
+    if (chain.length > 1 && id === chain[chain.length - 2]) {
+      selected.delete(chain.pop());
+      syncSelectionUI();
+      updateUI();
+    }
+    return;
+  }
+
+  const lastIndex = cells.findIndex(item => item.id === lastId);
+  const nextIndex = cells.findIndex(item => item.id === id);
+  if (!areNeighbors(lastIndex,nextIndex)) return;
+
+  chain.push(id);
+  selected.add(id);
+  syncSelectionUI();
+  updateUI();
+  scheduleCollectionIfReady();
+}
+
+function finishPointerChain(event) {
+  if (event.pointerId !== activePointerId) return;
+  if (dragging) ignoreClickUntil = performance.now() + 450;
+  boardEl.classList.remove('dragging');
+  if (boardEl.hasPointerCapture?.(event.pointerId)) boardEl.releasePointerCapture(event.pointerId);
+  activePointerId = null;
+  dragStartId = null;
+  dragging = false;
 }
 
 function scheduleCollectionIfReady() {
@@ -441,4 +515,8 @@ const wait = ms => new Promise(resolve => setTimeout(resolve,ms));
 clearBtn.addEventListener('click',clearSelection);
 restartBtn.addEventListener('click',start);
 nextLevelBtn.addEventListener('click',() => { levelIndex++; beginLevel(); });
+boardEl.addEventListener('pointerdown',startPointerChain);
+boardEl.addEventListener('pointermove',movePointerChain);
+boardEl.addEventListener('pointerup',finishPointerChain);
+boardEl.addEventListener('pointercancel',finishPointerChain);
 start();

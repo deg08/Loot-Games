@@ -203,6 +203,9 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
   grid-template-columns: repeat(6, 1fr);
   gap: var(--gap);
   aspect-ratio: 6 / 8;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .fruit {
@@ -214,7 +217,7 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
   border-radius: 50%;
   color: white;
   cursor: pointer;
-  touch-action: manipulation;
+  touch-action: none;
   -webkit-tap-highlight-color: transparent;
   background: radial-gradient(circle, #ffffff0c 0 50%, transparent 52%);
   font: 950 clamp(19px, 5vw, 28px)/1 ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
@@ -278,6 +281,7 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
 .fruit:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
 .fruit.selected { transform: scale(.85); filter: drop-shadow(0 0 5px white) drop-shadow(0 0 12px var(--cyan)); }
 .fruit.selected::before { outline: 4px solid var(--cyan); outline-offset: 2px; }
+.board.dragging .fruit { cursor: grabbing; }
 .fruit.removing { pointer-events: none; animation: pop .34s ease forwards; }
 .board.shake { animation: shake .35s ease; }
 
