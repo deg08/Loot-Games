@@ -199,14 +199,33 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
 }
 
 .board {
+  position: relative;
+  z-index: 3;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: repeat(8, minmax(0, 1fr));
   gap: var(--gap);
   aspect-ratio: 6 / 8;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
+
+.snake-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .1s ease;
+}
+.snake-layer.visible { opacity: 1; }
+.snake-layer path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.snake-glow { stroke: #70efff55; stroke-width: 18; filter: blur(3px); }
+.snake-line { stroke: #c9fbff; stroke-width: 8; filter: drop-shadow(0 0 5px #70efff) drop-shadow(0 0 10px #458cff); }
 
 .fruit {
   position: relative;
@@ -284,6 +303,45 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
 .board.dragging .fruit { cursor: grabbing; }
 .fruit.removing { pointer-events: none; animation: pop .34s ease forwards; }
 .board.shake { animation: shake .35s ease; }
+
+.obstacle {
+  position: relative;
+  z-index: 4;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  border: 2px solid #ffc66c99;
+  border-radius: 19%;
+  background:
+    linear-gradient(45deg, transparent 43%, #6e351f 44% 56%, transparent 57%),
+    linear-gradient(-45deg, transparent 43%, #6e351f 44% 56%, transparent 57%),
+    linear-gradient(145deg, #c77a3d, #854428);
+  box-shadow: inset 0 0 0 5px #e7a45a, inset 0 0 18px #542410aa, 0 6px 0 #542919, 0 10px 15px #05020b88;
+  font-size: clamp(25px, 6vw, 38px);
+  filter: saturate(.9);
+}
+.obstacle.intro { animation: drop .46s cubic-bezier(.2,.8,.3,1.25) backwards; }
+.crate-icon { position: relative; z-index: 1; filter: drop-shadow(0 3px 2px #35160788); }
+.crate-hp {
+  position: absolute;
+  right: -3px;
+  top: -5px;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 2px solid white;
+  border-radius: 50%;
+  color: #3a1c18;
+  background: var(--yellow);
+  box-shadow: 0 3px 8px #0008;
+  font-size: 11px;
+  font-weight: 950;
+}
+.obstacle.hit { animation: crateHit .36s ease; }
+.obstacle.breaking { pointer-events: none; animation: crateBreak .38s ease forwards; }
 
 .fruit-number { position: relative; z-index: 3; }
 .chain-order {
@@ -516,6 +574,8 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
 @keyframes dangerPulse { 50% { transform: scale(1.03); box-shadow: 0 0 22px #ff4f7b77; } }
 @keyframes gameOverIn { from { transform: scale(.65) rotate(-4deg); opacity: 0; } }
 @keyframes invalidWiggle { 25% { transform: translateX(-5px) rotate(-4deg); } 70% { transform: translateX(5px) rotate(4deg); } }
+@keyframes crateHit { 25% { transform: rotate(-8deg) scale(1.08); filter: brightness(1.5); } 70% { transform: rotate(6deg) scale(.96); } }
+@keyframes crateBreak { 35% { transform: scale(1.16) rotate(7deg); filter: brightness(1.8); } 100% { transform: scale(.25) rotate(-18deg); opacity: 0; } }
 
 @media (max-width: 480px) {
   :root { --gap: 4px; }

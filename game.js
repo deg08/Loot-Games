@@ -3,14 +3,18 @@ const COLS = 6;
 const MAX_CHAIN_LENGTH = 8;
 
 const LEVELS = [
-  { title:'Набери 600 очков', type:'score', goal:600, moves:10, target:10, maxValue:4 },
-  { title:'Собери 12 яблок', type:'apples', goal:12, moves:12, target:12, maxValue:5, bombEvery:4, fuse:4 },
-  { title:'Набери 1200 очков', type:'score', goal:1200, moves:12, target:14, maxValue:5, bombEvery:3, fuse:3 },
-  { title:'Обезвредь 3 бомбы', type:'bombs', goal:3, moves:14, target:16, maxValue:5, bombEvery:3, fuse:3, startBomb:true },
-  { title:'Набери 1800 очков', type:'score', goal:1800, moves:14, target:18, maxValue:6, bombEvery:3, fuse:2 }
+  { title:'Набери 600 очков', type:'score', goal:600, moves:10, target:10, maxValue:4, crates:2, crateHp:1 },
+  { title:'Собери 12 яблок', type:'apples', goal:12, moves:12, target:12, maxValue:5, crates:3, crateHp:1, bombEvery:4, fuse:4 },
+  { title:'Набери 1200 очков', type:'score', goal:1200, moves:12, target:14, maxValue:5, crates:3, crateHp:2, bombEvery:3, fuse:3 },
+  { title:'Обезвредь 3 бомбы', type:'bombs', goal:3, moves:14, target:16, maxValue:5, crates:4, crateHp:2, bombEvery:3, fuse:3, startBomb:true },
+  { title:'Набери 1800 очков', type:'score', goal:1800, moves:14, target:18, maxValue:6, crates:5, crateHp:2, bombEvery:3, fuse:2 }
 ];
 
 const boardEl = document.querySelector('#board');
+const boardWrapEl = document.querySelector('.board-wrap');
+const snakeLayerEl = document.querySelector('#snakeLayer');
+const snakeGlowEl = document.querySelector('#snakeGlow');
+const snakePathEl = document.querySelector('#snakePath');
 const sumEl = document.querySelector('#sum');
 const scoreEl = document.querySelector('#score');
 const bestEl = document.querySelector('#best');
@@ -36,6 +40,7 @@ const movesBonusEl = document.querySelector('#movesBonus');
 const nextLevelBtn = document.querySelector('#nextLevel');
 
 let cells = [];
+let obstacles = new Map();
 let selected = new Set();
 let chain = [];
 let score = 0;
@@ -68,7 +73,7 @@ function currentLevel() {
   if (levelIndex < LEVELS.length) return LEVELS[levelIndex];
   const round = levelIndex - LEVELS.length + 1;
   const goal = 1900 + round * 300;
-  return { title:`Набери ${goal} очков`, type:'score', goal, moves:14, target:18, maxValue:6, bombEvery:2, fuse:2, startBomb:true };
+  return { title:`Набери ${goal} очков`, type:'score', goal, moves:14, target:18, maxValue:6, crates:5, crateHp:2, bombEvery:2, fuse:2, startBomb:true };
 }
 
 function start() {
@@ -83,6 +88,7 @@ function beginLevel() {
   const level = currentLevel();
   target = level.target;
   cells = Array.from({length:ROWS * COLS}, fruit);
+  placeObstacles(level.crates || 0,level.crateHp || 1);
   selected = new Set();
   chain = [];
   levelScore = 0;
@@ -103,6 +109,20 @@ function beginLevel() {
 function render(initial=false) {
   boardEl.innerHTML = '';
   cells.forEach((item,index) => {
+    if (obstacles.has(index)) {
+      const obstacle = document.createElement('div');
+      const hp = obstacles.get(index);
+      obstacle.className = `obstacle${initial ? ' intro' : ''}`;
+      obstacle.dataset.obstacleIndex = index;
+      obstacle.setAttribute('role','img');
+      obstacle.setAttribute('aria-label',`Ящик, прочность ${hp}`);
+      obstacle.innerHTML = `<span class="crate-icon">📦</span>${hp > 1 ? `<span class="crate-hp">${hp}</span>` : ''}`;
+      if (initial) obstacle.style.animationDelay = `${(index % COLS) * 35 + Math.floor(index/COLS) * 22}ms`;
+      boardEl.append(obstacle);
+      delete item.fallRows;
+      delete item.fallDelay;
+      return;
+    }
     const button = document.createElement('button');
     const isBomb = item.id === bombId;
     const order = chain.indexOf(item.id);
@@ -124,7 +144,28 @@ function render(initial=false) {
     delete item.fallRows;
     delete item.fallDelay;
   });
+  updateSnakePath();
   updateUI();
+}
+
+function placeObstacles(count,hp) {
+  obstacles = new Map();
+  const candidates = Array.from({length:ROWS * COLS},(_,index) => index)
+    .filter(index => {
+      const row = Math.floor(index / COLS);
+      return row > 0 && row < ROWS - 1;
+    });
+  shuffle(candidates);
+
+  for (const index of candidates) {
+    if (obstacles.size >= count) break;
+    if ([...obstacles.keys()].some(other => areNeighbors(index,other))) continue;
+    obstacles.set(index,hp);
+  }
+  for (const index of candidates) {
+    if (obstacles.size >= count) break;
+    if (!obstacles.has(index)) obstacles.set(index,hp);
+  }
 }
 
 function total() {
@@ -178,9 +219,9 @@ function movePointerChain(event) {
   if (event.pointerId !== activePointerId || locked || !dragStartId) return;
   const fruitButton = document.elementFromPoint(event.clientX,event.clientY)?.closest('.fruit');
   const id = fruitButton?.dataset.id;
-  if (!id || id === dragStartId && !dragging) return;
 
   if (!dragging) {
+    if (!id || id === dragStartId) return;
     const startIndex = cells.findIndex(item => item.id === dragStartId);
     const nextIndex = cells.findIndex(item => item.id === id);
     if (!areNeighbors(startIndex,nextIndex)) return;
@@ -193,7 +234,8 @@ function movePointerChain(event) {
     updateUI();
   }
 
-  extendPointerChain(id);
+  if (id) extendPointerChain(id);
+  updateSnakePath({clientX:event.clientX,clientY:event.clientY});
   event.preventDefault();
 }
 
@@ -253,6 +295,28 @@ function syncSelectionUI() {
       button.append(badge);
     }
   });
+  updateSnakePath();
+}
+
+function updateSnakePath(pointer=null) {
+  const wrapRect = boardWrapEl.getBoundingClientRect();
+  const points = chain.map(id => {
+    const fruitButton = boardEl.querySelector(`[data-id="${id}"]`);
+    if (!fruitButton) return null;
+    const rect = fruitButton.getBoundingClientRect();
+    return { x:rect.left + rect.width / 2 - wrapRect.left, y:rect.top + rect.height / 2 - wrapRect.top };
+  }).filter(Boolean);
+
+  if (pointer && points.length) {
+    points.push({x:pointer.clientX - wrapRect.left,y:pointer.clientY - wrapRect.top});
+  }
+
+  const path = points.length > 1
+    ? points.map((point,index) => `${index ? 'L' : 'M'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ')
+    : '';
+  snakeGlowEl.setAttribute('d',path);
+  snakePathEl.setAttribute('d',path);
+  snakeLayerEl.classList.toggle('visible',Boolean(path));
 }
 
 function updateUI() {
@@ -273,7 +337,7 @@ function updateUI() {
   dangerMeterEl.classList.toggle('urgent',fuse <= 2);
 
   if (sum > target) hintEl.textContent = 'Перебор — вернись на шаг назад';
-  else if (!chain.length) hintEl.textContent = bombId ? 'Начни цепочку и доберись до бомбы' : `Соединяй соседние фрукты в сумму ${target}`;
+  else if (!chain.length) hintEl.textContent = bombId ? 'Начни цепочку и доберись до бомбы' : obstacles.size ? `Протяни цепочку на ${target}. Рядом с ящиком — удар!` : `Соединяй соседние фрукты в сумму ${target}`;
   else if (sum < target) hintEl.textContent = `Цепочка: ${sum} из ${target}. Продолжай по соседним клеткам`;
 }
 
@@ -305,7 +369,8 @@ async function collect() {
   const selectedItems = cells.filter(item => selected.has(item.id));
   const count = selectedItems.length;
   const apples = selectedItems.filter(item => item.type === 'apple').length;
-  const gained = count * 15 + Math.max(0,count - 2) * 20 + (defused ? 100 : 0);
+  const crateResult = damageAdjacentObstacles();
+  const gained = count * 15 + Math.max(0,count - 2) * 20 + (defused ? 100 : 0) + crateResult.broken * 60;
 
   successfulMoves++;
   movesLeft--;
@@ -315,7 +380,7 @@ async function collect() {
   if (defused) bombsDefused++;
   updateBest();
 
-  comboEl.textContent = defused ? `БОМБА СНЯТА! +${gained}` : count >= 4 ? `СУПЕРЦЕПЬ ×${count}  +${gained}` : `ЦЕПОЧКА ×${count}  +${gained}`;
+  comboEl.textContent = defused ? `БОМБА СНЯТА! +${gained}` : crateResult.broken ? `ЯЩИК РАЗБИТ! +${gained}` : count >= 4 ? `СУПЕРЦЕПЬ ×${count}  +${gained}` : `ЦЕПОЧКА ×${count}  +${gained}`;
   comboEl.classList.remove('show');
   void comboEl.offsetWidth;
   comboEl.classList.add('show');
@@ -341,6 +406,31 @@ async function collect() {
 
   if (progressValue() >= level.goal) { completeLevel(); return; }
   if (movesLeft <= 0) { endGame('moves'); return; }
+}
+
+function damageAdjacentObstacles() {
+  const selectedIndexes = new Set(chain.map(id => cells.findIndex(item => item.id === id)));
+  let broken = 0;
+  let hit = 0;
+
+  for (const [index,hp] of [...obstacles.entries()]) {
+    if (!neighborIndexes(index).some(neighbor => selectedIndexes.has(neighbor))) continue;
+    hit++;
+    const nextHp = hp - 1;
+    const obstacleEl = boardEl.querySelector(`[data-obstacle-index="${index}"]`);
+    if (nextHp <= 0) {
+      obstacles.delete(index);
+      broken++;
+      obstacleEl?.classList.add('breaking');
+    } else {
+      obstacles.set(index,nextHp);
+      obstacleEl?.classList.add('hit');
+      obstacleEl?.setAttribute('aria-label',`Ящик, прочность ${nextHp}`);
+      obstacleEl?.querySelector('.crate-hp')?.remove();
+    }
+  }
+
+  return {broken,hit};
 }
 
 function updateBest() {
@@ -394,6 +484,11 @@ function collapseAndRefill() {
     }
   }
   cells = next;
+  const hiddenBombIndex = bombId ? cells.findIndex(item => item.id === bombId) : -1;
+  if (hiddenBombIndex >= 0 && obstacles.has(hiddenBombIndex)) {
+    const visibleIndex = cells.findIndex((_,index) => !obstacles.has(index));
+    [cells[hiddenBombIndex],cells[visibleIndex]] = [cells[visibleIndex],cells[hiddenBombIndex]];
+  }
 }
 
 function areNeighbors(a,b) {
@@ -417,12 +512,13 @@ function neighborIndexes(index) {
 }
 
 function hasChainFrom(startIndex) {
+  if (obstacles.has(startIndex)) return false;
   const visited = new Set([startIndex]);
   function search(index,sum,depth) {
     if (sum === target && depth >= 3) return true;
     if (sum >= target || depth >= MAX_CHAIN_LENGTH) return false;
     for (const next of neighborIndexes(index)) {
-      if (visited.has(next)) continue;
+      if (visited.has(next) || obstacles.has(next)) continue;
       visited.add(next);
       if (search(next,sum + cells[next].value,depth + 1)) return true;
       visited.delete(next);
@@ -439,7 +535,7 @@ function hasValidChain() {
 function ensurePlayable() {
   if (hasValidChain()) return;
   for (let attempt=0; attempt<18; attempt++) {
-    shuffle(cells);
+    shuffleVisibleCells();
     if (hasValidChain()) {
       showToast('Поле перемешано — ищем новую цепочку');
       return;
@@ -448,23 +544,30 @@ function ensurePlayable() {
   forcePlayableChain();
 }
 
+function shuffleVisibleCells() {
+  const indexes = cells.map((_,index) => index).filter(index => !obstacles.has(index));
+  const visibleCells = indexes.map(index => cells[index]);
+  shuffle(visibleCells);
+  indexes.forEach((index,position) => { cells[index] = visibleCells[position]; });
+}
+
 function ensureBombPlayable() {
   const bombIndex = cells.findIndex(item => item.id === bombId);
   if (bombIndex < 0 || hasChainFrom(bombIndex)) return;
-  const neighbors = neighborIndexes(bombIndex);
-  const rescue = neighbors[Math.floor(Math.random() * neighbors.length)];
-  const needed = target - cells[bombIndex].value;
-  if (needed <= currentLevel().maxValue) {
-    cells[rescue].value = needed;
-    return;
-  }
   forcePlayableChain(bombIndex);
 }
 
 function forcePlayableChain(startIndex=0) {
   const maxValue = currentLevel().maxValue;
   const count = Math.ceil(target / maxValue);
-  const path = startIndex === 0 ? Array.from({length:count},(_,i) => i) : buildPathFrom(startIndex,count);
+  const starts = [startIndex,...cells.map((_,index) => index)]
+    .filter((index,position,list) => !obstacles.has(index) && list.indexOf(index) === position);
+  let path = [];
+  for (const candidate of starts) {
+    path = buildPathFrom(candidate,count);
+    if (path.length === count) break;
+  }
+  if (path.length !== count) return;
   let remaining = target;
   path.forEach((index,position) => {
     const slotsLeft = path.length - position - 1;
@@ -477,14 +580,19 @@ function forcePlayableChain(startIndex=0) {
 function buildPathFrom(startIndex,length) {
   const path = [startIndex];
   const used = new Set(path);
-  while (path.length < length) {
-    const options = neighborIndexes(path[path.length - 1]).filter(index => !used.has(index));
-    const next = options[0];
-    if (next === undefined) break;
-    path.push(next);
-    used.add(next);
+  function search(index) {
+    if (path.length === length) return true;
+    for (const next of neighborIndexes(index)) {
+      if (used.has(next) || obstacles.has(next)) continue;
+      used.add(next);
+      path.push(next);
+      if (search(next)) return true;
+      path.pop();
+      used.delete(next);
+    }
+    return false;
   }
-  return path;
+  return search(startIndex) ? path : [];
 }
 
 function shuffle(items) {
@@ -521,4 +629,5 @@ boardEl.addEventListener('pointerdown',startPointerChain);
 boardEl.addEventListener('pointermove',movePointerChain);
 boardEl.addEventListener('pointerup',finishPointerChain);
 boardEl.addEventListener('pointercancel',finishPointerChain);
+window.addEventListener('resize',() => updateSnakePath());
 start();
