@@ -105,11 +105,10 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
   position: relative;
   min-height: 64px;
   display: grid;
-  grid-template-columns: auto 1fr 72px;
-  grid-template-rows: auto auto;
+  grid-template-columns: 56px minmax(0, 1fr) 58px 64px;
   align-items: center;
-  column-gap: 12px;
-  padding: 10px 12px 10px 16px;
+  gap: 9px;
+  padding: 8px 10px;
   overflow: hidden;
   border: 1px solid #ffc66b69;
   border-radius: 20px;
@@ -129,30 +128,49 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
   border-radius: 50%;
 }
 
-.goal-card span {
-  grid-row: 1 / 3;
-  align-self: center;
-  padding: 6px 9px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: .8px;
-  text-transform: uppercase;
-  color: #ffe8bb;
-  background: #1d103752;
-}
-.goal-card p { grid-column: 2; margin: 0; font-size: 13px; line-height: 1.25; color: #f5eafd; }
-.goal-card strong {
+.level-chip,
+.moves-box,
+.target-token {
   position: relative;
   z-index: 1;
-  grid-column: 3;
-  grid-row: 1 / 3;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  font-size: 45px;
-  line-height: 1;
-  letter-spacing: -3px;
+  border: 1px solid #ffffff24;
+  border-radius: 14px;
+  background: #1d103752;
+}
+
+.level-chip small,
+.moves-box small,
+.target-token small { color: #ddc9f1; font-size: 7px; letter-spacing: .9px; }
+.level-chip strong,
+.moves-box strong { font-size: 24px; line-height: 1; color: white; }
+.moves-box.urgent { border-color: #ff8da8; animation: dangerPulse .8s ease infinite; }
+.moves-box.urgent strong { color: var(--yellow); }
+
+.mission-copy { min-width: 0; }
+.mission-copy span {
+  display: block;
+  overflow: hidden;
+  color: white;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mission-copy p { margin: 3px 0 0; color: #dfd0ed; font-size: 10px; font-weight: 800; }
+
+.target-token strong {
+  font-size: 31px;
+  line-height: .9;
+  letter-spacing: -2px;
   color: var(--yellow);
-  text-shadow: 0 4px 0 #793863, 0 7px 16px #1b082f99;
+  text-shadow: 0 3px 0 #793863, 0 6px 13px #1b082f99;
 }
 
 .board-wrap {
@@ -264,6 +282,25 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
 .board.shake { animation: shake .35s ease; }
 
 .fruit-number { position: relative; z-index: 3; }
+.chain-order {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  bottom: 0;
+  width: 21px;
+  height: 21px;
+  display: grid;
+  place-items: center;
+  border: 2px solid white;
+  border-radius: 50%;
+  color: #24133e;
+  background: var(--cyan);
+  box-shadow: 0 3px 8px #0007;
+  font-size: 10px;
+  font-weight: 950;
+  text-shadow: none;
+}
+.fruit.invalid { animation: invalidWiggle .28s ease; filter: grayscale(.35) drop-shadow(0 0 8px var(--pink)); }
 .fruit.bomb { filter: drop-shadow(0 0 10px var(--pink)); }
 .fruit.bomb::before { outline: 4px dashed var(--pink); outline-offset: 1px; animation: bombPulse .75s ease infinite; }
 .fuse-label {
@@ -426,6 +463,46 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
 }
 .game-over-card button:active { transform: translateY(4px); box-shadow: 0 2px 0 #368a3c; }
 
+.level-complete {
+  position: fixed;
+  inset: 0;
+  z-index: 31;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #10081ddd;
+  backdrop-filter: blur(9px);
+}
+.level-complete[hidden] { display: none; }
+.level-complete-card {
+  width: min(100%, 370px);
+  padding: 30px;
+  text-align: center;
+  border: 1px solid #ffe58a66;
+  border-radius: 29px;
+  color: white;
+  background: linear-gradient(145deg, #6c337d, #2a1949);
+  box-shadow: inset 0 1px #ffffff38, 0 25px 70px #000a;
+  animation: gameOverIn .45s cubic-bezier(.2,.8,.3,1.25);
+}
+.level-complete-card > span { display: block; font-size: 66px; }
+.level-complete-card h2 { margin: 5px 0 8px; font-size: 29px; }
+.level-complete-card p { margin: 0 0 22px; color: #e3d7ee; }
+.level-complete-card p strong { color: var(--yellow); }
+.level-complete-card button {
+  width: 100%;
+  padding: 14px;
+  border: 0;
+  border-radius: 17px;
+  color: #243019;
+  cursor: pointer;
+  background: linear-gradient(#ffe777, #f7b64d);
+  box-shadow: 0 6px 0 #bd7131, 0 12px 25px #140a0355;
+  font-size: 17px;
+  font-weight: 950;
+}
+.level-complete-card button:active { transform: translateY(4px); box-shadow: 0 2px 0 #bd7131; }
+
 @keyframes drop { from { transform: translateY(-140px) scale(.7); opacity: 0; } }
 @keyframes fallGrid { from { transform: translateY(calc(var(--fall-pct) - var(--fall-gap))); } }
 @keyframes pop { to { transform: scale(1.5) rotate(18deg); opacity: 0; } }
@@ -434,6 +511,7 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
 @keyframes bombPulse { 50% { outline-color: var(--yellow); transform: scale(1.04); } }
 @keyframes dangerPulse { 50% { transform: scale(1.03); box-shadow: 0 0 22px #ff4f7b77; } }
 @keyframes gameOverIn { from { transform: scale(.65) rotate(-4deg); opacity: 0; } }
+@keyframes invalidWiggle { 25% { transform: translateX(-5px) rotate(-4deg); } 70% { transform: translateX(5px) rotate(4deg); } }
 
 @media (max-width: 480px) {
   :root { --gap: 4px; }
@@ -447,10 +525,12 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
   .stats small { font-size: 7px; letter-spacing: 1.2px; }
   .stats strong { font-size: 17px; }
   .play-area { gap: 8px; }
-  .goal-card { min-height: 55px; grid-template-columns: auto 1fr 54px; gap: 8px; padding: 7px 9px 7px 11px; border-radius: 17px; }
-  .goal-card span { padding: 5px 7px; font-size: 8px; }
-  .goal-card p { font-size: 11px; }
-  .goal-card strong { font-size: 37px; }
+  .goal-card { min-height: 55px; grid-template-columns: 44px minmax(0, 1fr) 48px 52px; gap: 5px; padding: 6px; border-radius: 17px; }
+  .level-chip, .moves-box, .target-token { min-height: 43px; border-radius: 11px; }
+  .level-chip strong, .moves-box strong { font-size: 20px; }
+  .target-token strong { font-size: 27px; }
+  .mission-copy span { font-size: 10px; }
+  .mission-copy p { font-size: 8px; }
   .board-wrap { padding: 8px; border-radius: 24px; }
   .board-wrap::before { inset: 7px; }
   .controls { min-height: 53px; grid-template-columns: minmax(112px, 1fr) auto minmax(112px, 1fr); gap: 5px; }
@@ -472,7 +552,7 @@ small { font-size: 9px; font-weight: 900; letter-spacing: 1.8px; color: #b9a8da;
   .brand-fruit { width: 38px; height: 38px; font-size: 24px; }
   .play-area { gap: 6px; }
   .goal-card { min-height: 46px; padding-block: 5px; }
-  .goal-card p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mission-copy p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .board-wrap { width: min(100%, calc((100svh - 213px) * 6 / 7)); align-self: center; }
   .controls { min-height: 48px; }
   .hint { min-height: 14px; }
