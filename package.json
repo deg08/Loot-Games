@@ -6,8 +6,8 @@
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "dev": "vite",
-    "check": "node --check src/main.js && node --check src/game.js && node --check src/config/levels.js && node --check src/core/grid.js && node --check src/platforms/browser.js && node --check scripts/package-yandex.mjs",
-    "test": "node --test test/grid.test.js test/levels.test.js",
+    "check": "node --check src/main.js && node --check src/game.js && node --check src/config/levels.js && node --check src/core/grid.js && node --check src/core/profile.js && node --check src/core/progression.js && node --check src/core/analytics.js && node --check src/platforms/browser.js && node --check scripts/package-yandex.mjs",
+    "test": "node --test test/grid.test.js test/levels.test.js test/profile.test.js test/progression.test.js",
     "build": "vite build",
     "preview": "vite preview",
     "package:yandex": "node scripts/package-yandex.mjs",

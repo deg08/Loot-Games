@@ -1,8 +1,12 @@
-import { COLS, MAX_CHAIN_LENGTH, ROWS, getLevelConfig } from './config/levels.js';
+import { COLS, LEVELS, MAX_CHAIN_LENGTH, ROWS, getLevelConfig } from './config/levels.js';
+import { createAnalytics } from './core/analytics.js';
 import { areNeighbors as gridAreNeighbors, findSimplePath, neighborIndexes as gridNeighborIndexes, shuffleInPlace } from './core/grid.js';
+import { completeProfileLevel, normalizeProfile, profileStarTotal } from './core/profile.js';
+import { calculateStars, missionProgress } from './core/progression.js';
 import { createBrowserPlatform } from './platforms/browser.js';
 
 const platform = createBrowserPlatform();
+const analytics = createAnalytics(platform);
 const areNeighbors = (a,b) => gridAreNeighbors(a,b,COLS);
 const neighborIndexes = index => gridNeighborIndexes(index,ROWS,COLS);
 const shuffle = items => shuffleInPlace(items);
@@ -35,6 +39,21 @@ const restartBtn = document.querySelector('#restart');
 const levelCompleteEl = document.querySelector('#levelComplete');
 const movesBonusEl = document.querySelector('#movesBonus');
 const nextLevelBtn = document.querySelector('#nextLevel');
+const earnedStarsEl = document.querySelector('#earnedStars');
+const coinsEarnedEl = document.querySelector('#coinsEarned');
+const levelMapEl = document.querySelector('#levelMap');
+const levelGridEl = document.querySelector('#levelGrid');
+const chapterTabsEl = document.querySelector('#chapterTabs');
+const totalStarsEl = document.querySelector('#totalStars');
+const coinsEl = document.querySelector('#coins');
+const mapButton = document.querySelector('#mapButton');
+const mapCloseBtn = document.querySelector('#mapClose');
+const levelMapButton = document.querySelector('#levelMapButton');
+const gameOverMapButton = document.querySelector('#gameOverMap');
+const debugPanelEl = document.querySelector('#debugPanel');
+const debugLevelEl = document.querySelector('#debugLevel');
+const debugWinBtn = document.querySelector('#debugWin');
+const debugResetBtn = document.querySelector('#debugReset');
 
 let cells = [];
 let obstacles = new Map();
@@ -44,6 +63,7 @@ let score = 0;
 let levelScore = 0;
 let applesCleared = 0;
 let bombsDefused = 0;
+let cratesBroken = 0;
 let levelIndex = 0;
 let movesLeft = 0;
 let successfulMoves = 0;
@@ -56,8 +76,9 @@ let activePointerId = null;
 let dragStartId = null;
 let dragging = false;
 let ignoreClickUntil = 0;
-let best = platform.loadBest();
-bestEl.textContent = best;
+let profile = normalizeProfile(null,LEVELS.length);
+let best = 0;
+let activeChapter = 1;
 
 const randomValue = () => Math.max(1,Math.ceil(Math.pow(Math.random(),1.35) * currentLevel().maxValue));
 const fruit = () => ({
@@ -70,10 +91,11 @@ function currentLevel() {
   return getLevelConfig(levelIndex);
 }
 
-function start() {
+function start(levelNumber=profile.unlockedLevel) {
   score = 0;
-  levelIndex = 0;
+  levelIndex = Math.max(0,Math.min(LEVELS.length - 1,levelNumber - 1));
   scoreEl.textContent = '0';
+  analytics.track('run_started',{levelId:currentLevel().id});
   beginLevel();
 }
 
@@ -88,6 +110,7 @@ function beginLevel() {
   levelScore = 0;
   applesCleared = 0;
   bombsDefused = 0;
+  cratesBroken = 0;
   successfulMoves = 0;
   movesLeft = level.moves;
   bombId = null;
@@ -98,6 +121,8 @@ function beginLevel() {
   ensurePlayable();
   if (level.startBomb) plantBomb();
   render(true);
+  platform.gameplayStart();
+  analytics.track('level_started',{levelId:level.id,chapter:level.chapter,target:level.target,moves:level.moves});
 }
 
 function render(initial=false) {
@@ -336,10 +361,12 @@ function updateUI() {
 }
 
 function progressValue() {
-  const type = currentLevel().type;
-  if (type === 'apples') return applesCleared;
-  if (type === 'bombs') return bombsDefused;
-  return levelScore;
+  return missionProgress(currentLevel().type,{
+    score:levelScore,
+    apples:applesCleared,
+    bombs:bombsDefused,
+    crates:cratesBroken
+  });
 }
 
 function progressLabel() {
@@ -371,6 +398,7 @@ async function collect() {
   score += gained;
   levelScore += gained;
   applesCleared += apples;
+  cratesBroken += crateResult.broken;
   if (defused) bombsDefused++;
   updateBest();
 
@@ -430,17 +458,43 @@ function damageAdjacentObstacles() {
 function updateBest() {
   if (score <= best) return;
   best = score;
+  profile.bestScore = best;
   bestEl.textContent = best;
   platform.saveBest(best);
+  platform.saveProfile(profile);
 }
 
 function completeLevel() {
   locked = true;
+  platform.gameplayStop();
+  const level = currentLevel();
   const bonus = movesLeft * 25;
   score += bonus;
+  const stars = calculateStars(movesLeft,level.moves);
+  const result = completeProfileLevel(profile,{
+    levelId:level.id,
+    stars,
+    score,
+    maxLevel:LEVELS.length
+  });
+  profile = result.profile;
+  best = Math.max(best,profile.bestScore);
+  platform.saveBest(best);
+  platform.saveProfile(profile);
   movesBonusEl.textContent = `${movesLeft} (+${bonus} очков)`;
+  earnedStarsEl.textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
+  coinsEarnedEl.textContent = result.coinsEarned ? `+${result.coinsEarned} монет` : 'Рекорд уровня сохранён';
   scoreEl.textContent = score;
+  bestEl.textContent = best;
   updateBest();
+  renderLevelMap();
+  analytics.track('level_completed',{
+    levelId:level.id,
+    score,
+    stars,
+    movesLeft,
+    coinsEarned:result.coinsEarned
+  });
   setTimeout(() => { levelCompleteEl.hidden = false; },350);
 }
 
@@ -555,8 +609,84 @@ function buildPathFrom(startIndex,length) {
   return findSimplePath(startIndex,length,{rows:ROWS,cols:COLS,blocked:obstacles});
 }
 
+function openLevelMap(chapter=currentLevel().chapter) {
+  activeChapter = chapter;
+  renderLevelMap();
+  levelMapEl.hidden = false;
+  platform.gameplayStop();
+  analytics.track('level_map_opened',{levelId:currentLevel().id,chapter:activeChapter});
+}
+
+function closeLevelMap() {
+  levelMapEl.hidden = true;
+  if (!locked) platform.gameplayStart();
+}
+
+function renderLevelMap() {
+  totalStarsEl.textContent = profileStarTotal(profile);
+  coinsEl.textContent = profile.coins;
+  chapterTabsEl.innerHTML = '';
+  for (let chapter=1; chapter<=3; chapter++) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = chapter === activeChapter ? 'active' : '';
+    button.textContent = `Глава ${chapter}`;
+    button.addEventListener('click',() => {
+      activeChapter = chapter;
+      renderLevelMap();
+    });
+    chapterTabsEl.append(button);
+  }
+
+  levelGridEl.innerHTML = '';
+  LEVELS.filter(level => level.chapter === activeChapter).forEach(level => {
+    const state = profile.levels[level.id];
+    const unlocked = level.id <= profile.unlockedLevel;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.disabled = !unlocked;
+    button.className = `level-node${!unlocked ? ' locked' : ''}${state ? ' completed' : ''}${level.id === currentLevel().id ? ' current' : ''}`;
+    button.setAttribute('aria-label',unlocked ? `Уровень ${level.id}. ${level.title}. ${state?.stars || 0} звёзд` : `Уровень ${level.id} закрыт`);
+    button.innerHTML = `${unlocked ? level.id : '🔒'}<span class="node-stars">${state ? '★'.repeat(state.stars) + '☆'.repeat(3-state.stars) : '☆☆☆'}</span>`;
+    if (unlocked) button.addEventListener('click',() => {
+      levelCompleteEl.hidden = true;
+      gameOverEl.hidden = true;
+      closeLevelMap();
+      start(level.id);
+    });
+    levelGridEl.append(button);
+  });
+
+  mapCloseBtn.hidden = !cells.length || locked;
+}
+
+function setupDebugTools() {
+  if (!new URLSearchParams(location.search).has('debug')) return;
+  debugPanelEl.hidden = false;
+  debugLevelEl.innerHTML = LEVELS.map(level => `<option value="${level.id}">${level.id}: ${level.title}</option>`).join('');
+  debugLevelEl.value = String(currentLevel().id);
+  debugLevelEl.addEventListener('change',() => start(Number(debugLevelEl.value)));
+  debugWinBtn.addEventListener('click',() => {
+    if (locked) return;
+    levelScore = currentLevel().type === 'score' ? currentLevel().goal : levelScore;
+    applesCleared = currentLevel().type === 'apples' ? currentLevel().goal : applesCleared;
+    bombsDefused = currentLevel().type === 'bombs' ? currentLevel().goal : bombsDefused;
+    cratesBroken = currentLevel().type === 'crates' ? currentLevel().goal : cratesBroken;
+    completeLevel();
+  });
+  debugResetBtn.addEventListener('click',() => {
+    profile = normalizeProfile(null,LEVELS.length);
+    best = 0;
+    platform.saveProfile(profile);
+    platform.saveBest(0);
+    start(1);
+    openLevelMap(1);
+  });
+}
+
 function endGame(reason) {
   locked = true;
+  platform.gameplayStop();
   bombId = null;
   boardEl.classList.remove('shake');
   void boardEl.offsetWidth;
@@ -564,6 +694,7 @@ function endGame(reason) {
   gameOverIconEl.textContent = reason === 'moves' ? '⌛' : '💥';
   gameOverTitleEl.textContent = reason === 'moves' ? 'Ходы закончились' : 'Фитиль догорел!';
   finalScoreEl.textContent = score;
+  analytics.track('level_failed',{levelId:currentLevel().id,reason,score,progress:progressValue(),movesLeft});
   setTimeout(() => { gameOverEl.hidden = false; },350);
 }
 
@@ -576,8 +707,25 @@ function showToast(text) {
 const wait = ms => new Promise(resolve => setTimeout(resolve,ms));
 
 clearBtn.addEventListener('click',clearSelection);
-restartBtn.addEventListener('click',start);
-nextLevelBtn.addEventListener('click',() => { levelIndex++; beginLevel(); });
+restartBtn.addEventListener('click',() => start(currentLevel().id));
+nextLevelBtn.addEventListener('click',() => {
+  levelCompleteEl.hidden = true;
+  if (levelIndex >= LEVELS.length - 1) {
+    openLevelMap(3);
+    return;
+  }
+  start(levelIndex + 2);
+});
+mapButton.addEventListener('click',() => openLevelMap());
+mapCloseBtn.addEventListener('click',closeLevelMap);
+levelMapButton.addEventListener('click',() => {
+  levelCompleteEl.hidden = true;
+  openLevelMap();
+});
+gameOverMapButton.addEventListener('click',() => {
+  gameOverEl.hidden = true;
+  openLevelMap();
+});
 boardEl.addEventListener('pointerdown',startPointerChain);
 boardEl.addEventListener('pointermove',movePointerChain);
 boardEl.addEventListener('pointerup',finishPointerChain);
@@ -585,7 +733,14 @@ boardEl.addEventListener('pointercancel',finishPointerChain);
 window.addEventListener('resize',() => updateSnakePath());
 
 export async function startGame() {
-  start();
   await platform.ready();
-  platform.gameplayStart();
+  profile = normalizeProfile(platform.loadProfile(),LEVELS.length);
+  best = Math.max(profile.bestScore,platform.loadBest());
+  profile.bestScore = best;
+  bestEl.textContent = best;
+  platform.saveProfile(profile);
+  start(profile.unlockedLevel);
+  setupDebugTools();
+  openLevelMap(currentLevel().chapter);
+  analytics.track('game_ready',{platform:platform.id,unlockedLevel:profile.unlockedLevel});
 }

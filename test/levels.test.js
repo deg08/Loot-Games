@@ -1,18 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS, getLevelConfig } from '../src/config/levels.js';
+import { LEVELS, LEVEL_SCHEMA_VERSION, getLevelConfig, validateLevel } from '../src/config/levels.js';
 
-test('every authored level has a reachable target requiring at least three fruits',() => {
-  for (const level of LEVELS) {
-    assert.ok(level.target > level.maxValue * 2,level.title);
-    assert.ok(level.moves > 0,level.title);
-    assert.ok(level.goal > 0,level.title);
-  }
+test('campaign contains 15 ordered, valid, versioned levels',() => {
+  assert.equal(LEVELS.length,15);
+  LEVELS.forEach((level,index) => {
+    assert.equal(level.id,index + 1);
+    assert.equal(level.schemaVersion,LEVEL_SCHEMA_VERSION);
+    assert.deepEqual(validateLevel(level),[],level.title);
+  });
 });
 
-test('endless levels scale their score goal',() => {
-  const first = getLevelConfig(LEVELS.length);
-  const second = getLevelConfig(LEVELS.length + 1);
-  assert.ok(second.goal > first.goal);
-  assert.equal(first.target,18);
+test('campaign is split into three chapters of five levels',() => {
+  assert.deepEqual(LEVELS.map(level => level.chapter),[
+    1,1,1,1,1,
+    2,2,2,2,2,
+    3,3,3,3,3
+  ]);
+});
+
+test('level lookup is clamped to campaign bounds',() => {
+  assert.equal(getLevelConfig(-1).id,1);
+  assert.equal(getLevelConfig(100).id,15);
 });
