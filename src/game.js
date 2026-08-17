@@ -1,14 +1,11 @@
-const ROWS = 8;
-const COLS = 6;
-const MAX_CHAIN_LENGTH = 8;
+import { COLS, MAX_CHAIN_LENGTH, ROWS, getLevelConfig } from './config/levels.js';
+import { areNeighbors as gridAreNeighbors, findSimplePath, neighborIndexes as gridNeighborIndexes, shuffleInPlace } from './core/grid.js';
+import { createBrowserPlatform } from './platforms/browser.js';
 
-const LEVELS = [
-  { title:'Набери 600 очков', type:'score', goal:600, moves:10, target:10, maxValue:4, crates:2, crateHp:1 },
-  { title:'Собери 12 яблок', type:'apples', goal:12, moves:12, target:12, maxValue:5, crates:3, crateHp:1, bombEvery:4, fuse:4 },
-  { title:'Набери 1200 очков', type:'score', goal:1200, moves:12, target:14, maxValue:5, crates:3, crateHp:2, bombEvery:3, fuse:3 },
-  { title:'Обезвредь 3 бомбы', type:'bombs', goal:3, moves:14, target:16, maxValue:5, crates:4, crateHp:2, bombEvery:3, fuse:3, startBomb:true },
-  { title:'Набери 1800 очков', type:'score', goal:1800, moves:14, target:18, maxValue:6, crates:5, crateHp:2, bombEvery:3, fuse:2 }
-];
+const platform = createBrowserPlatform();
+const areNeighbors = (a,b) => gridAreNeighbors(a,b,COLS);
+const neighborIndexes = index => gridNeighborIndexes(index,ROWS,COLS);
+const shuffle = items => shuffleInPlace(items);
 
 const boardEl = document.querySelector('#board');
 const boardWrapEl = document.querySelector('.board-wrap');
@@ -59,7 +56,7 @@ let activePointerId = null;
 let dragStartId = null;
 let dragging = false;
 let ignoreClickUntil = 0;
-let best = Number(localStorage.getItem('fruit10-best') || 0);
+let best = platform.loadBest();
 bestEl.textContent = best;
 
 const randomValue = () => Math.max(1,Math.ceil(Math.pow(Math.random(),1.35) * currentLevel().maxValue));
@@ -70,10 +67,7 @@ const fruit = () => ({
 });
 
 function currentLevel() {
-  if (levelIndex < LEVELS.length) return LEVELS[levelIndex];
-  const round = levelIndex - LEVELS.length + 1;
-  const goal = 1900 + round * 300;
-  return { title:`Набери ${goal} очков`, type:'score', goal, moves:14, target:18, maxValue:6, crates:5, crateHp:2, bombEvery:2, fuse:2, startBomb:true };
+  return getLevelConfig(levelIndex);
 }
 
 function start() {
@@ -437,7 +431,7 @@ function updateBest() {
   if (score <= best) return;
   best = score;
   bestEl.textContent = best;
-  localStorage.setItem('fruit10-best',best);
+  platform.saveBest(best);
 }
 
 function completeLevel() {
@@ -489,26 +483,6 @@ function collapseAndRefill() {
     const visibleIndex = cells.findIndex((_,index) => !obstacles.has(index));
     [cells[hiddenBombIndex],cells[visibleIndex]] = [cells[visibleIndex],cells[hiddenBombIndex]];
   }
-}
-
-function areNeighbors(a,b) {
-  if (a < 0 || b < 0) return false;
-  const rowA = Math.floor(a / COLS);
-  const colA = a % COLS;
-  const rowB = Math.floor(b / COLS);
-  const colB = b % COLS;
-  return Math.abs(rowA - rowB) + Math.abs(colA - colB) === 1;
-}
-
-function neighborIndexes(index) {
-  const row = Math.floor(index / COLS);
-  const col = index % COLS;
-  const result = [];
-  if (row > 0) result.push(index - COLS);
-  if (row < ROWS - 1) result.push(index + COLS);
-  if (col > 0) result.push(index - 1);
-  if (col < COLS - 1) result.push(index + 1);
-  return result;
 }
 
 function hasChainFrom(startIndex) {
@@ -578,28 +552,7 @@ function forcePlayableChain(startIndex=0) {
 }
 
 function buildPathFrom(startIndex,length) {
-  const path = [startIndex];
-  const used = new Set(path);
-  function search(index) {
-    if (path.length === length) return true;
-    for (const next of neighborIndexes(index)) {
-      if (used.has(next) || obstacles.has(next)) continue;
-      used.add(next);
-      path.push(next);
-      if (search(next)) return true;
-      path.pop();
-      used.delete(next);
-    }
-    return false;
-  }
-  return search(startIndex) ? path : [];
-}
-
-function shuffle(items) {
-  for (let i=items.length-1; i>0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [items[i],items[j]] = [items[j],items[i]];
-  }
+  return findSimplePath(startIndex,length,{rows:ROWS,cols:COLS,blocked:obstacles});
 }
 
 function endGame(reason) {
@@ -630,4 +583,9 @@ boardEl.addEventListener('pointermove',movePointerChain);
 boardEl.addEventListener('pointerup',finishPointerChain);
 boardEl.addEventListener('pointercancel',finishPointerChain);
 window.addEventListener('resize',() => updateSnakePath());
-start();
+
+export async function startGame() {
+  start();
+  await platform.ready();
+  platform.gameplayStart();
+}

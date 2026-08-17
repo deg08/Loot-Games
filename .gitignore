@@ -1,3 +1,14 @@
 fruit10-netlify.zip
 .DS_Store
 Thumbs.db
+node_modules/
+dist/
+artifacts/
+
+# Other local projects and deployment secrets stored beside this repository.
+/.loot-*
+/loot-production-ed25519*
+/loot-release.tar.gz
+/Loot-prod/
+/Loot-API-prod/
+/loot-deploy/
