@@ -5,9 +5,10 @@ export function calculateStars(movesLeft,totalMoves) {
   return 1;
 }
 
-export function missionProgress(type,{score=0,apples=0,bombs=0,crates=0}={}) {
+export function missionProgress(type,{score=0,apples=0,bombs=0,crates=0,ice=0}={}) {
   if (type === 'apples') return apples;
   if (type === 'bombs') return bombs;
   if (type === 'crates') return crates;
+  if (type === 'ice') return ice;
   return score;
 }

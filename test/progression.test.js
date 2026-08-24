@@ -9,9 +9,10 @@ test('stars reward efficient level completion',() => {
 });
 
 test('mission progress supports every campaign goal',() => {
-  const values = {score:900,apples:12,bombs:3,crates:4};
+  const values = {score:900,apples:12,bombs:3,crates:4,ice:7};
   assert.equal(missionProgress('score',values),900);
   assert.equal(missionProgress('apples',values),12);
   assert.equal(missionProgress('bombs',values),3);
   assert.equal(missionProgress('crates',values),4);
+  assert.equal(missionProgress('ice',values),7);
 });

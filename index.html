@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Фрукты 10+</title>
   <meta name="theme-color" content="#100b27" />
-  <link rel="stylesheet" href="./styles.css?v=13" />
+  <link rel="stylesheet" href="./styles.css?v=14" />
 </head>
 <body>
   <main class="game-shell">
     <header class="topbar">
       <button class="brand" id="mapButton" type="button" aria-label="Открыть карту уровней"><span class="brand-fruit">🍊</span><span><small>СОБЕРИ СУММУ</small><strong>Фрукты 10+</strong></span></button>
-      <div class="stats"><div><small>СЧЁТ</small><strong id="score">0</strong></div><div><small>РЕКОРД</small><strong id="best">0</strong></div></div>
+      <div class="stats"><div><small>СЧЁТ</small><strong id="score">0</strong></div><div><small>РЕКОРД</small><strong id="best">0</strong></div><button id="shopQuickButton" type="button"><small>МОНЕТЫ</small><strong>🪙 <span id="gameCoins">0</span></strong></button></div>
     </header>
 
     <section class="play-area">
@@ -36,6 +36,12 @@
         <button class="clear-btn" id="clear" type="button" aria-label="Сбросить выбор">Сбросить</button>
         <div class="danger-meter" id="dangerMeter" hidden><span>💣 ФИТИЛЬ</span><strong id="fuse">4</strong><em>хода</em></div>
       </div>
+      <div class="booster-tray" id="boosterTray" aria-label="Бустеры">
+        <button data-booster="extra_moves" type="button"><span>➕</span><small>Ходы</small><b id="booster-extra_moves">0</b></button>
+        <button data-booster="shuffle" type="button"><span>🔀</span><small>Микс</small><b id="booster-shuffle">0</b></button>
+        <button data-booster="rainbow" type="button"><span>🌈</span><small>Радуга</small><b id="booster-rainbow">0</b></button>
+        <button data-booster="hammer" type="button"><span>🔨</span><small>Удар</small><b id="booster-hammer">0</b></button>
+      </div>
       <p class="hint" id="hint">Нажимай на любые фрукты</p>
     </section>
   </main>
@@ -45,11 +51,31 @@
     <section class="level-map-card" aria-labelledby="mapTitle">
       <header class="map-header">
         <div><small>ФРУКТОВАЯ ДОРОГА</small><h2 id="mapTitle">Выбери уровень</h2></div>
-        <div class="wallet"><span>⭐ <strong id="totalStars">0</strong></span><span>🪙 <strong id="coins">0</strong></span></div>
+        <div class="wallet"><span>⭐ <strong id="totalStars">0</strong></span><span>🪙 <strong id="coins">0</strong></span><button id="shopButton" type="button">🛒 Магазин</button></div>
       </header>
       <div class="chapter-tabs" id="chapterTabs" aria-label="Главы"></div>
       <div class="level-grid" id="levelGrid"></div>
       <button class="map-close" id="mapClose" type="button">Продолжить игру</button>
+    </section>
+  </div>
+  <div class="shop" id="shop" hidden>
+    <section class="shop-card" aria-labelledby="shopTitle">
+      <header class="shop-header"><div><small>ЭКОНОМИКА БЕЗ РЕАЛЬНЫХ ДЕНЕГ</small><h2 id="shopTitle">Магазин садовника</h2></div><button id="shopClose" type="button" aria-label="Закрыть магазин">×</button></header>
+      <div class="shop-balance">Баланс: 🪙 <strong id="shopCoins">0</strong></div>
+      <h3>Бустеры за монеты</h3>
+      <div class="shop-grid" id="boosterShop"></div>
+      <h3>Тестовые покупки</h3>
+      <p class="shop-notice">Демо-режим: деньги не списываются. Здесь проверяется будущая логика безопасных транзакций.</p>
+      <div class="shop-grid purchases" id="purchaseShop"></div>
+    </section>
+  </div>
+  <div class="tutorial" id="tutorial" hidden>
+    <section class="tutorial-card">
+      <span class="tutorial-emoji" id="tutorialEmoji">🍊</span>
+      <small>НОВАЯ МЕХАНИКА</small>
+      <h2 id="tutorialTitle">Собирай цепочки</h2>
+      <p id="tutorialText"></p>
+      <button id="tutorialClose" type="button">Понятно, играем!</button>
     </section>
   </div>
   <div class="game-over" id="gameOver" hidden>
@@ -58,6 +84,7 @@
       <small>ПАРТИЯ ОКОНЧЕНА</small>
       <h2 id="gameOverTitle">Фитиль догорел!</h2>
       <p id="gameOverText">Счёт за эту партию: <strong id="finalScore">0</strong></p>
+      <button class="continue-button" id="continueButton" type="button">➕ Продолжить: +5 ходов <span id="continueCount">0</span></button>
       <div class="modal-actions"><button id="restart" type="button">Ещё раз</button><button id="gameOverMap" type="button">К уровням</button></div>
     </div>
   </div>
@@ -78,6 +105,6 @@
     <button id="debugWin" type="button">Завершить</button>
     <button id="debugReset" type="button">Сбросить профиль</button>
   </aside>
-  <script type="module" src="./src/main.js?v=13"></script>
+  <script type="module" src="./src/main.js?v=14"></script>
 </body>
 </html>

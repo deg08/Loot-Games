@@ -1,11 +1,15 @@
-import { COLS, LEVELS, MAX_CHAIN_LENGTH, ROWS, getLevelConfig } from './config/levels.js';
+import { CHAPTERS, COLS, LEVELS, MAX_CHAIN_LENGTH, ROWS, getLevelConfig } from './config/levels.js';
+import { BOOSTER_CATALOG, PURCHASE_CATALOG, purchaseById } from './config/products.js';
 import { createAnalytics } from './core/analytics.js';
 import { areNeighbors as gridAreNeighbors, findSimplePath, neighborIndexes as gridNeighborIndexes, shuffleInPlace } from './core/grid.js';
-import { completeProfileLevel, normalizeProfile, profileStarTotal } from './core/profile.js';
+import { completeProfileLevel, markTutorialSeen, normalizeProfile, profileStarTotal } from './core/profile.js';
 import { calculateStars, missionProgress } from './core/progression.js';
+import { buyBooster, consumeBooster, fulfillPurchase, recordPendingPurchase, recoverPendingPurchases } from './core/store.js';
 import { createBrowserPlatform } from './platforms/browser.js';
+import { createMockPurchaseAdapter } from './platforms/mock-store.js';
 
 const platform = createBrowserPlatform();
+const purchaseAdapter = createMockPurchaseAdapter();
 const analytics = createAnalytics(platform);
 const areNeighbors = (a,b) => gridAreNeighbors(a,b,COLS);
 const neighborIndexes = index => gridNeighborIndexes(index,ROWS,COLS);
@@ -54,6 +58,22 @@ const debugPanelEl = document.querySelector('#debugPanel');
 const debugLevelEl = document.querySelector('#debugLevel');
 const debugWinBtn = document.querySelector('#debugWin');
 const debugResetBtn = document.querySelector('#debugReset');
+const gameCoinsEl = document.querySelector('#gameCoins');
+const boosterTrayEl = document.querySelector('#boosterTray');
+const shopEl = document.querySelector('#shop');
+const shopButton = document.querySelector('#shopButton');
+const shopQuickButton = document.querySelector('#shopQuickButton');
+const shopCloseBtn = document.querySelector('#shopClose');
+const shopCoinsEl = document.querySelector('#shopCoins');
+const boosterShopEl = document.querySelector('#boosterShop');
+const purchaseShopEl = document.querySelector('#purchaseShop');
+const continueBtn = document.querySelector('#continueButton');
+const continueCountEl = document.querySelector('#continueCount');
+const tutorialEl = document.querySelector('#tutorial');
+const tutorialEmojiEl = document.querySelector('#tutorialEmoji');
+const tutorialTitleEl = document.querySelector('#tutorialTitle');
+const tutorialTextEl = document.querySelector('#tutorialText');
+const tutorialCloseBtn = document.querySelector('#tutorialClose');
 
 let cells = [];
 let obstacles = new Map();
@@ -64,6 +84,7 @@ let levelScore = 0;
 let applesCleared = 0;
 let bombsDefused = 0;
 let cratesBroken = 0;
+let iceBroken = 0;
 let levelIndex = 0;
 let movesLeft = 0;
 let successfulMoves = 0;
@@ -79,6 +100,16 @@ let ignoreClickUntil = 0;
 let profile = normalizeProfile(null,LEVELS.length);
 let best = 0;
 let activeChapter = 1;
+let activeBooster = null;
+let pendingTutorialId = null;
+
+const TUTORIALS = Object.freeze({
+  chains:{emoji:'👆',title:'Протяни цепочку',text:'Зажми фрукт и проведи по соседним клеткам. Цепочка соберётся автоматически, когда сумма совпадёт с целью.'},
+  crates:{emoji:'📦',title:'Разбивай ящики',text:'Собирай цепочки рядом с ящиками. Каждый соседний успешный ход наносит им один удар.'},
+  ice:{emoji:'🧊',title:'Разбей лёд',text:'Замороженный фрукт нужно включить в правильную цепочку. Толстому льду потребуется несколько попаданий.'},
+  bombs:{emoji:'💣',title:'Следи за фитилём',text:'Включи фрукт с бомбой в цепочку до того, как закончатся ходы на её таймере.'},
+  boosters:{emoji:'🎒',title:'Бустеры садовника',text:'Используй дополнительные ходы, перемешивание, радугу и молоток. Новые бустеры можно покупать за заработанные монеты.'}
+});
 
 const randomValue = () => Math.max(1,Math.ceil(Math.pow(Math.random(),1.35) * currentLevel().maxValue));
 const fruit = () => ({
@@ -105,15 +136,19 @@ function beginLevel() {
   target = level.target;
   cells = Array.from({length:ROWS * COLS}, fruit);
   placeObstacles(level.crates || 0,level.crateHp || 1);
+  placeIce(level.ice || 0,level.iceHp || 1);
   selected = new Set();
   chain = [];
   levelScore = 0;
   applesCleared = 0;
   bombsDefused = 0;
   cratesBroken = 0;
+  iceBroken = 0;
   successfulMoves = 0;
   movesLeft = level.moves;
   bombId = null;
+  activeBooster = null;
+  boardEl.classList.remove('booster-aim');
   fuse = level.fuse || 4;
   locked = false;
   gameOverEl.hidden = true;
@@ -123,6 +158,9 @@ function beginLevel() {
   render(true);
   platform.gameplayStart();
   analytics.track('level_started',{levelId:level.id,chapter:level.chapter,target:level.target,moves:level.moves});
+  if (level.tutorial) setTimeout(() => {
+    if (levelMapEl.hidden) showTutorial(level.tutorial);
+  },520);
 }
 
 function render(initial=false) {
@@ -136,6 +174,7 @@ function render(initial=false) {
       obstacle.setAttribute('role','img');
       obstacle.setAttribute('aria-label',`Ящик, прочность ${hp}`);
       obstacle.innerHTML = `<span class="crate-icon">📦</span>${hp > 1 ? `<span class="crate-hp">${hp}</span>` : ''}`;
+      obstacle.addEventListener('click',() => hitObstacleWithHammer(index));
       if (initial) obstacle.style.animationDelay = `${(index % COLS) * 35 + Math.floor(index/COLS) * 22}ms`;
       boardEl.append(obstacle);
       delete item.fallRows;
@@ -145,10 +184,10 @@ function render(initial=false) {
     const button = document.createElement('button');
     const isBomb = item.id === bombId;
     const order = chain.indexOf(item.id);
-    button.className = `fruit ${item.type}${selected.has(item.id) ? ' selected' : ''}${isBomb ? ' bomb' : ''}${initial ? ' intro' : ''}${item.fallRows ? ' falling' : ''}`;
-    button.innerHTML = `<span class="fruit-number">${item.value}</span>${order >= 0 ? `<span class="chain-order">${order + 1}</span>` : ''}${isBomb ? `<span class="fuse-label">${fuse}</span>` : ''}`;
+    button.className = `fruit ${item.type}${selected.has(item.id) ? ' selected' : ''}${isBomb ? ' bomb' : ''}${item.ice ? ' iced' : ''}${item.rainbow ? ' rainbow' : ''}${initial ? ' intro' : ''}${item.fallRows ? ' falling' : ''}`;
+    button.innerHTML = `<span class="fruit-number">${item.rainbow ? '★' : item.value}</span>${order >= 0 ? `<span class="chain-order">${order + 1}</span>` : ''}${isBomb ? `<span class="fuse-label">${fuse}</span>` : ''}${item.ice ? `<span class="ice-label">${item.ice > 1 ? item.ice : '❄'}</span>` : ''}`;
     button.dataset.id = item.id;
-    button.setAttribute('aria-label', `${isBomb ? `Фрукт с бомбой, осталось ходов ${fuse},` : ''} ${item.type === 'apple' ? 'Яблоко' : 'Апельсин'}, число ${item.value}${order >= 0 ? `, номер ${order + 1} в цепочке` : ''}`);
+    button.setAttribute('aria-label', `${isBomb ? `Фрукт с бомбой, осталось ходов ${fuse},` : ''}${item.ice ? ` заморожен, прочность льда ${item.ice},` : ''}${item.rainbow ? ' радужный фрукт' : ` ${item.type === 'apple' ? 'Яблоко' : 'Апельсин'}, число ${item.value}`}${order >= 0 ? `, номер ${order + 1} в цепочке` : ''}`);
     if (initial) button.style.animationDelay = `${(index % COLS) * 35 + Math.floor(index/COLS) * 22}ms`;
     if (item.fallRows) {
       button.style.setProperty('--fall-pct', `${item.fallRows * -100}%`);
@@ -187,8 +226,16 @@ function placeObstacles(count,hp) {
   }
 }
 
+function placeIce(count,hp) {
+  const candidates = cells.map((item,index) => ({item,index})).filter(({index}) => !obstacles.has(index));
+  shuffle(candidates);
+  candidates.slice(0,count).forEach(({item}) => { item.ice = hp; });
+}
+
 function total() {
-  return cells.filter(item => selected.has(item.id)).reduce((sum,item) => sum + item.value,0);
+  const items = cells.filter(item => selected.has(item.id));
+  const regularTotal = items.reduce((sum,item) => sum + (item.rainbow ? 0 : item.value),0);
+  return items.some(item => item.rainbow) && chain.length >= 2 ? target : regularTotal;
 }
 
 function toggle(id) {
@@ -295,7 +342,7 @@ function finishPointerChain(event) {
 }
 
 function scheduleCollectionIfReady() {
-  if (total() !== target) return;
+  if (total() !== target || chain.length < 3) return;
   locked = true;
   hintEl.textContent = `Есть ${target}! Собираем…`;
   autoCollectTimer = setTimeout(collect,280);
@@ -354,8 +401,11 @@ function updateUI() {
   dangerMeterEl.hidden = !bombId;
   fuseEl.textContent = fuse;
   dangerMeterEl.classList.toggle('urgent',fuse <= 2);
+  updateEconomyUI();
 
-  if (sum > target) hintEl.textContent = 'Перебор — вернись на шаг назад';
+  if (activeBooster === 'hammer') hintEl.textContent = 'Выбери ящик, который нужно ударить молотком';
+  else if (sum === target && chain.length < 3) hintEl.textContent = 'Для цепочки нужно минимум три фрукта';
+  else if (sum > target) hintEl.textContent = 'Перебор — вернись на шаг назад';
   else if (!chain.length) hintEl.textContent = bombId ? 'Начни цепочку и доберись до бомбы' : obstacles.size ? `Протяни цепочку на ${target}. Рядом с ящиком — удар!` : `Соединяй соседние фрукты в сумму ${target}`;
   else if (sum < target) hintEl.textContent = `Цепочка: ${sum} из ${target}. Продолжай по соседним клеткам`;
 }
@@ -365,7 +415,8 @@ function progressValue() {
     score:levelScore,
     apples:applesCleared,
     bombs:bombsDefused,
-    crates:cratesBroken
+    crates:cratesBroken,
+    ice:iceBroken
   });
 }
 
@@ -384,12 +435,23 @@ function clearSelection() {
 }
 
 async function collect() {
-  if (total() !== target) { locked = false; return; }
+  if (total() !== target || chain.length < 3) { locked = false; return; }
   const level = currentLevel();
   const defused = Boolean(bombId && selected.has(bombId));
   const selectedItems = cells.filter(item => selected.has(item.id));
   const count = selectedItems.length;
-  const apples = selectedItems.filter(item => item.type === 'apple').length;
+  const removedIds = new Set();
+  let shatteredIce = 0;
+  selectedItems.forEach(item => {
+    if (item.ice) {
+      item.ice--;
+      shatteredIce++;
+      if (item.ice <= 0) delete item.ice;
+      else return;
+    }
+    removedIds.add(item.id);
+  });
+  const apples = selectedItems.filter(item => removedIds.has(item.id) && item.type === 'apple').length;
   const crateResult = damageAdjacentObstacles();
   const gained = count * 15 + Math.max(0,count - 2) * 20 + (defused ? 100 : 0) + crateResult.broken * 60;
 
@@ -399,6 +461,7 @@ async function collect() {
   levelScore += gained;
   applesCleared += apples;
   cratesBroken += crateResult.broken;
+  iceBroken += shatteredIce;
   if (defused) bombsDefused++;
   updateBest();
 
@@ -406,13 +469,13 @@ async function collect() {
   comboEl.classList.remove('show');
   void comboEl.offsetWidth;
   comboEl.classList.add('show');
-  selected.forEach(id => boardEl.querySelector(`[data-id="${id}"]`)?.classList.add('removing'));
+  removedIds.forEach(id => boardEl.querySelector(`[data-id="${id}"]`)?.classList.add('removing'));
   await wait(360);
 
   if (defused) { bombId = null; fuse = level.fuse || 4; }
   else if (bombId) fuse--;
 
-  collapseAndRefill();
+  collapseAndRefill(removedIds);
   selected = new Set();
   chain = [];
 
@@ -509,13 +572,13 @@ function plantBomb() {
   showToast(`💣 Бомба! Включи её в цепочку за ${fuse} хода`);
 }
 
-function collapseAndRefill() {
+function collapseAndRefill(removedIds=selected) {
   const next = Array(ROWS * COLS);
   for (let col=0; col<COLS; col++) {
     const survivors = [];
     for (let row=ROWS-1; row>=0; row--) {
       const item = cells[row*COLS+col];
-      if (!selected.has(item.id)) survivors.push({item,oldRow:row});
+      if (!removedIds.has(item.id)) survivors.push({item,oldRow:row});
     }
     const missing = ROWS - survivors.length;
     for (let row=ROWS-1,i=0; row>=0; row--,i++) {
@@ -609,6 +672,198 @@ function buildPathFrom(startIndex,length) {
   return findSimplePath(startIndex,length,{rows:ROWS,cols:COLS,blocked:obstacles});
 }
 
+function persistProfile() {
+  platform.saveProfile(profile);
+  updateEconomyUI();
+}
+
+function updateEconomyUI() {
+  gameCoinsEl.textContent = profile.coins;
+  coinsEl.textContent = profile.coins;
+  shopCoinsEl.textContent = profile.coins;
+  continueCountEl.textContent = profile.inventory.extra_moves || 0;
+  continueBtn.disabled = (profile.inventory.extra_moves || 0) < 1;
+  BOOSTER_CATALOG.forEach(booster => {
+    const count = profile.inventory[booster.id] || 0;
+    const countEl = document.querySelector(`#booster-${booster.id}`);
+    if (countEl) countEl.textContent = count;
+    const button = boosterTrayEl.querySelector(`[data-booster="${booster.id}"]`);
+    if (button) button.disabled = count < 1 || (locked && booster.id !== 'extra_moves');
+  });
+}
+
+function spendBooster(boosterId) {
+  const result = consumeBooster(profile,boosterId,LEVELS.length);
+  if (!result.ok) {
+    showToast('Бустер закончился — загляни в магазин');
+    openShop();
+    return false;
+  }
+  profile = result.profile;
+  persistProfile();
+  analytics.track('booster_used',{boosterId,levelId:currentLevel().id});
+  return true;
+}
+
+function useBooster(boosterId) {
+  if (locked) return;
+  if (boosterId === 'extra_moves') {
+    if (!spendBooster(boosterId)) return;
+    movesLeft += 5;
+    updateUI();
+    showToast('+5 ходов');
+    return;
+  }
+  if (boosterId === 'shuffle') {
+    if (!spendBooster(boosterId)) return;
+    shuffleVisibleCells();
+    ensurePlayable();
+    render();
+    showToast('Фрукты перемешаны');
+    return;
+  }
+  if (boosterId === 'rainbow') {
+    const candidates = cells.filter((item,index) => !obstacles.has(index) && !item.rainbow);
+    if (!candidates.length) return;
+    if (!spendBooster(boosterId)) return;
+    const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    chosen.rainbow = true;
+    render();
+    showToast('Радужный фрукт появился на поле');
+    return;
+  }
+  if (boosterId === 'hammer') {
+    if (!obstacles.size) {
+      showToast('На поле нет ящиков');
+      return;
+    }
+    activeBooster = activeBooster === 'hammer' ? null : 'hammer';
+    boardEl.classList.toggle('booster-aim',activeBooster === 'hammer');
+    boosterTrayEl.querySelector('[data-booster="hammer"]')?.classList.toggle('active',activeBooster === 'hammer');
+    updateUI();
+  }
+}
+
+function hitObstacleWithHammer(index) {
+  if (activeBooster !== 'hammer' || !obstacles.has(index) || locked) return;
+  if (!spendBooster('hammer')) return;
+  const hp = obstacles.get(index) - 1;
+  if (hp <= 0) {
+    obstacles.delete(index);
+    cratesBroken++;
+    showToast('Ящик разбит молотком');
+  } else {
+    obstacles.set(index,hp);
+    showToast('Ящик повреждён');
+  }
+  activeBooster = null;
+  boardEl.classList.remove('booster-aim');
+  boosterTrayEl.querySelector('[data-booster="hammer"]')?.classList.remove('active');
+  ensurePlayable();
+  render();
+  if (progressValue() >= currentLevel().goal) completeLevel();
+}
+
+function continueWithExtraMoves() {
+  if (!spendBooster('extra_moves')) return;
+  movesLeft = Math.max(0,movesLeft) + 5;
+  locked = false;
+  gameOverEl.hidden = true;
+  render();
+  platform.gameplayStart();
+  analytics.track('level_continued',{levelId:currentLevel().id,movesAdded:5});
+  showToast('Ещё пять ходов — вперёд!');
+}
+
+function openShop() {
+  renderShop();
+  shopEl.hidden = false;
+  platform.gameplayStop();
+  analytics.track('shop_opened',{levelId:currentLevel().id});
+  if (!profile.seenTutorials.boosters) showTutorial('boosters');
+}
+
+function closeShop() {
+  shopEl.hidden = true;
+  if (!locked && levelMapEl.hidden) platform.gameplayStart();
+}
+
+function renderShop() {
+  updateEconomyUI();
+  boosterShopEl.innerHTML = '';
+  for (const booster of BOOSTER_CATALOG) {
+    const item = document.createElement('article');
+    item.className = 'shop-item';
+    item.innerHTML = `<span>${booster.emoji}</span><div><strong>${booster.title}</strong><small>${booster.description}</small></div><button type="button">🪙 ${booster.coinPrice} · В рюкзаке: ${profile.inventory[booster.id] || 0}</button>`;
+    item.querySelector('button').addEventListener('click',() => {
+      const result = buyBooster(profile,booster.id,LEVELS.length);
+      if (!result.ok) {
+        showToast('Не хватает монет');
+        return;
+      }
+      profile = result.profile;
+      persistProfile();
+      analytics.track('booster_bought',{boosterId:booster.id,coinPrice:booster.coinPrice});
+      renderShop();
+    });
+    boosterShopEl.append(item);
+  }
+
+  purchaseShopEl.innerHTML = '';
+  for (const product of PURCHASE_CATALOG) {
+    const owned = product.kind === 'non_consumable' && profile.entitlements[product.id];
+    const item = document.createElement('article');
+    item.className = 'shop-item';
+    item.innerHTML = `<span>${product.emoji}</span><div><strong>${product.title}</strong><small class="test-badge">ТЕСТ · ${product.testPrice}</small></div><button type="button" ${owned ? 'disabled' : ''}>${owned ? 'Уже получено' : 'Тестовая покупка'}</button>`;
+    const button = item.querySelector('button');
+    if (!owned) button.addEventListener('click',() => performTestPurchase(product.id,button));
+    purchaseShopEl.append(item);
+  }
+}
+
+async function performTestPurchase(productId,button) {
+  button.disabled = true;
+  button.textContent = 'Обрабатываем…';
+  const transaction = await purchaseAdapter.purchase(productId);
+  const pending = recordPendingPurchase(profile,transaction,LEVELS.length);
+  if (!pending.ok) {
+    showToast(pending.reason === 'already_owned' ? 'Покупка уже получена' : 'Не удалось создать транзакцию');
+    renderShop();
+    return;
+  }
+  profile = pending.profile;
+  persistProfile();
+  const fulfilled = fulfillPurchase(profile,transaction.transactionId,LEVELS.length);
+  profile = fulfilled.profile;
+  persistProfile();
+  const product = purchaseById(productId);
+  analytics.track('test_purchase_fulfilled',{productId,transactionId:transaction.transactionId});
+  showToast(`${product.emoji} ${product.title} получено в демо-режиме`);
+  renderShop();
+}
+
+function showTutorial(tutorialId) {
+  const tutorial = TUTORIALS[tutorialId];
+  if (!tutorial || profile.seenTutorials[tutorialId]) return;
+  pendingTutorialId = tutorialId;
+  tutorialEmojiEl.textContent = tutorial.emoji;
+  tutorialTitleEl.textContent = tutorial.title;
+  tutorialTextEl.textContent = tutorial.text;
+  tutorialEl.hidden = false;
+  platform.gameplayStop();
+}
+
+function closeTutorial() {
+  if (pendingTutorialId) {
+    profile = markTutorialSeen(profile,pendingTutorialId);
+    persistProfile();
+    analytics.track('tutorial_completed',{tutorialId:pendingTutorialId});
+  }
+  pendingTutorialId = null;
+  tutorialEl.hidden = true;
+  if (!locked && shopEl.hidden && levelMapEl.hidden) platform.gameplayStart();
+}
+
 function openLevelMap(chapter=currentLevel().chapter) {
   activeChapter = chapter;
   renderLevelMap();
@@ -620,17 +875,20 @@ function openLevelMap(chapter=currentLevel().chapter) {
 function closeLevelMap() {
   levelMapEl.hidden = true;
   if (!locked) platform.gameplayStart();
+  if (currentLevel().tutorial) setTimeout(() => showTutorial(currentLevel().tutorial),120);
 }
 
 function renderLevelMap() {
   totalStarsEl.textContent = profileStarTotal(profile);
   coinsEl.textContent = profile.coins;
   chapterTabsEl.innerHTML = '';
-  for (let chapter=1; chapter<=3; chapter++) {
+  for (const chapterConfig of CHAPTERS) {
+    const chapter = chapterConfig.id;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = chapter === activeChapter ? 'active' : '';
-    button.textContent = `Глава ${chapter}`;
+    button.textContent = `${chapterConfig.emoji} ${chapter}`;
+    button.title = `${chapterConfig.title}: ${chapterConfig.unlock}`;
     button.addEventListener('click',() => {
       activeChapter = chapter;
       renderLevelMap();
@@ -694,6 +952,7 @@ function endGame(reason) {
   gameOverIconEl.textContent = reason === 'moves' ? '⌛' : '💥';
   gameOverTitleEl.textContent = reason === 'moves' ? 'Ходы закончились' : 'Фитиль догорел!';
   finalScoreEl.textContent = score;
+  updateEconomyUI();
   analytics.track('level_failed',{levelId:currentLevel().id,reason,score,progress:progressValue(),movesLeft});
   setTimeout(() => { gameOverEl.hidden = false; },350);
 }
@@ -711,7 +970,7 @@ restartBtn.addEventListener('click',() => start(currentLevel().id));
 nextLevelBtn.addEventListener('click',() => {
   levelCompleteEl.hidden = true;
   if (levelIndex >= LEVELS.length - 1) {
-    openLevelMap(3);
+    openLevelMap(CHAPTERS.length);
     return;
   }
   start(levelIndex + 2);
@@ -726,6 +985,15 @@ gameOverMapButton.addEventListener('click',() => {
   gameOverEl.hidden = true;
   openLevelMap();
 });
+shopButton.addEventListener('click',openShop);
+shopQuickButton.addEventListener('click',openShop);
+shopCloseBtn.addEventListener('click',closeShop);
+continueBtn.addEventListener('click',continueWithExtraMoves);
+tutorialCloseBtn.addEventListener('click',closeTutorial);
+boosterTrayEl.addEventListener('click',event => {
+  const button = event.target.closest('[data-booster]');
+  if (button) useBooster(button.dataset.booster);
+});
 boardEl.addEventListener('pointerdown',startPointerChain);
 boardEl.addEventListener('pointermove',movePointerChain);
 boardEl.addEventListener('pointerup',finishPointerChain);
@@ -735,6 +1003,8 @@ window.addEventListener('resize',() => updateSnakePath());
 export async function startGame() {
   await platform.ready();
   profile = normalizeProfile(platform.loadProfile(),LEVELS.length);
+  const recovery = recoverPendingPurchases(profile,LEVELS.length);
+  profile = recovery.profile;
   best = Math.max(profile.bestScore,platform.loadBest());
   profile.bestScore = best;
   bestEl.textContent = best;
@@ -743,4 +1013,5 @@ export async function startGame() {
   setupDebugTools();
   openLevelMap(currentLevel().chapter);
   analytics.track('game_ready',{platform:platform.id,unlockedLevel:profile.unlockedLevel});
+  if (recovery.recovered.length) showToast(`Восстановлено покупок: ${recovery.recovered.length}`);
 }
